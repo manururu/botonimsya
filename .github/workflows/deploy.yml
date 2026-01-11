@@ -1,0 +1,79 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}
+      IMAGE_TAG: ${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+            ${{ env.IMAGE_NAME }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -euo pipefail
+            
+            APP_NAME=botonimsya
+            APP_DIR="/u01/$APP_NAME"
+            mkdir -p "$APP_DIR"
+
+            cat > "$APP_DIR/.env" << 'EOF'
+            ${{ secrets.ENV_FILE }}
+            EOF
+
+            cat > "$APP_DIR/credentials.json" << 'EOF'
+            ${{ secrets.CREDENTIALS_JSON }}
+            EOF
+
+            chmod 600 "$APP_DIR/.env" "$APP_DIR/credentials.json"
+
+            IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
+
+            docker pull "$IMAGE"
+            docker rm -f $APP_NAME || true
+            docker run -d \
+              --name "$APP_NAME" \
+              --restart unless-stopped \
+              --env-file "$APP_DIR/.env" \
+              -v "$APP_DIR/credentials.json:/app/credentials.json:ro" \
+              "$IMAGE"
+            docker image prune -f
+
