@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	skipCommand = "/skip"
+	skipCmd = "/skip"
 	cancelCmd   = "/cancel"
 	startCmd    = "/start"
+	addCmd      = "/add"
 )
 
 func main() {
@@ -28,6 +29,7 @@ func main() {
 
 	token := mustEnv("TELEGRAM_BOT_TOKEN")
 	sheetID := mustEnv("GOOGLE_SHEETS_ID")
+	sheetURL := fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/edit", sheetID)
 	credsPath := mustEnv("GOOGLE_CREDENTIALS_FILE")
 	allowedIDs := parseAllowedUserIDs(mustEnv("ALLOWED_USER_IDS"))
 
@@ -52,7 +54,7 @@ func main() {
 			return
 		}
 	  log.Printf("MESSAGE: chat=%d text=%q\n", update.Message.Chat.ID, update.Message.Text)
-		handleMessage(ctx, b, update.Message, store, sheetsClient, allowedIDs)
+		handleMessage(ctx, b, update.Message, store, sheetsClient, allowedIDs, sheetURL)
 	}))
 	if err != nil {
 		log.Fatal(err)
@@ -62,37 +64,63 @@ func main() {
 	b.Start(ctx)
 }
 
-func handleMessage(ctx context.Context, b *tgbot.Bot, msg *models.Message, store *StateStore, sheetsClient *SheetsClient, allowedIDs map[int64]struct{}) {
+func handleMessage(
+	ctx context.Context,
+	b *tgbot.Bot,
+	msg *models.Message,
+	store *StateStore,
+	sheetsClient *SheetsClient,
+	allowedIDs map[int64]struct{},
+	sheetURL string,
+) {
 	userID := msg.From.ID
-	
+
 	if !isAllowed(allowedIDs, userID) {
-	sendText(ctx, b, msg.Chat.ID, "🔒 Извините, у вас нет доступа к этому боту\\", nil)
-
-	return
-  }
-
-	text := strings.TrimSpace(msg.Text)
-
-	if text == cancelCmd {
-		store.Reset(userID)
-		sendText(ctx, b, msg.Chat.ID, "Ок, отменил\\. Чтобы начать заново — /start", nil)
+		sendText(ctx, b, msg.Chat.ID,
+			"⛔ Это семейный бот для учёта расходов\\. У вас нет прав пользоваться им\\.",
+			nil,
+		)
 		return
 	}
 
+	text := strings.TrimSpace(msg.Text)
+
+	
+
 	if text == startCmd {
+		greeting := fmt.Sprintf(
+			"Привет\\!\n\n"+
+			"Я записываю семейные расходы в [таблицу](%s)\\.\n\n"+
+			"➕ Добавить расход — /add\n"+
+			"❌ Отменить ввод — /cancel\n",
+			sheetURL,
+		)
+		sendText(ctx, b, msg.Chat.ID, greeting, nil)
+		return
+	}
+
+	if text == cancelCmd {
+		store.Reset(userID)
+		sendText(ctx, b, msg.Chat.ID, "😕 Галя, у нас отмена\\. Чтобы начать заново — /add", nil)
+		return
+	}
+
+	if text == addCmd {
 		store.Reset(userID)
 		st := store.Get(userID)
 		st.Step = StepDate
 		st.UpdatedAt = time.Now()
-		sendText(ctx, b, msg.Chat.ID, "Введи *Дату* в формате DD\\.MM\\.YYYY \\(например 09\\.01\\.2026\\):\n\n❌ /cancel — отмена", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		sendText(ctx, b, msg.Chat.ID, "Записываю ✍️\n\nВведи *Дату* в формате DD\\.MM\\.YYYY \\(например 09\\.01\\.2026\\):\n\n❌ /cancel — отмена", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
 		return
 	}
 
 	st := store.Get(userID)
 
 	if st.Step == StepNone {
-		st.Step = StepDate
-		sendText(ctx, b, msg.Chat.ID, "Начнём! Введи *Дату* в формате DD\\.MM\\.YYYY:\n\n❌ /cancel — отмена", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		sendText(ctx, b, msg.Chat.ID,
+			"Чтобы добавить расход — отправь /add\n/start — справка",
+			nil,
+		)
 		return
 	}
 
@@ -115,7 +143,7 @@ func handleMessage(ctx context.Context, b *tgbot.Bot, msg *models.Message, store
 
 	case StepSpender:
 		if !contains(cats.Spenders, text) {
-			sendText(ctx, b, msg.Chat.ID, "Выбери значение кнопкой ниже", replyKeyboardFromList(cats.Spenders))
+			sendText(ctx, b, msg.Chat.ID, "Выбери значение кнопкой ниже, не выдумывай 😹", replyKeyboardFromList(cats.Spenders))
 			return
 		}
 		st.Spender = text
@@ -125,7 +153,7 @@ func handleMessage(ctx context.Context, b *tgbot.Bot, msg *models.Message, store
 
 	case StepCategory:
 		if !contains(cats.Cats, text) {
-			sendText(ctx, b, msg.Chat.ID, "Пожалуйста, выбери значение кнопкой ниже", replyKeyboardFromList(cats.Cats))
+			sendText(ctx, b, msg.Chat.ID, "Пожалуйста, выбери значение кнопкой ниже, зачем этот геморрой? 😹", replyKeyboardFromList(cats.Cats))
 			return
 		}
 		st.Category = text
@@ -141,11 +169,11 @@ func handleMessage(ctx context.Context, b *tgbot.Bot, msg *models.Message, store
 		}
 		st.Amount = amt
 		st.Step = StepComment
-		sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Введи *Комментарий* или отправь %s чтобы пропустить:", skipCommand), nil)
+		sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Введи *Комментарий* или отправь %s чтобы пропустить:", skipCmd), nil)
 		return
 
 	case StepComment:
-		if text == skipCommand {
+		if text == skipCmd {
 			st.Comment = ""
 		} else {
 			st.Comment = text
@@ -156,7 +184,7 @@ func handleMessage(ctx context.Context, b *tgbot.Bot, msg *models.Message, store
 
 	case StepCard:
 		if !contains(cats.Cards, text) {
-			sendText(ctx, b, msg.Chat.ID, "Пожалуйста, выбери значение кнопкой ниже", replyKeyboardFromList(cats.Cards))
+			sendText(ctx, b, msg.Chat.ID, "Пожалуйста, выбери значение кнопкой ниже, это проще, чем нажимать кнопки на клаве 🫠", replyKeyboardFromList(cats.Cards))
 			return
 		}
 		st.Card = text
@@ -168,12 +196,12 @@ func handleMessage(ctx context.Context, b *tgbot.Bot, msg *models.Message, store
 		}
 
 		store.Reset(userID)
-		sendText(ctx, b, msg.Chat.ID, "✅ Записал в «Расходы»\\.\n\nЧтобы добавить ещё — /start", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		sendText(ctx, b, msg.Chat.ID, "✅ Записал в «Расходы»\\.\n\nЧтобы добавить ещё — /add", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
 		return
 
 	default:
 		store.Reset(userID)
-		sendText(ctx, b, msg.Chat.ID, "💀⌛ Состояние сбилось по таймауту или ещё по какой-то причине\\. Начнём заново? \\(/start\\)", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		sendText(ctx, b, msg.Chat.ID, "💀⌛ Состояние сбилось по таймауту или ещё по какой-то причине\\. Начнём заново? \\(/add\\)", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
 		return
 	}
 }
