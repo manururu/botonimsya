@@ -34,7 +34,6 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          platform: linux/amd64
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
@@ -64,7 +63,7 @@ jobs:
             ${{ secrets.CREDENTIALS_JSON }}
             EOF
 
-            chmod 600 "$APP_DIR/.env" "$APP_DIR/credentials.json"
+            chmod 644 "$APP_DIR/.env" "$APP_DIR/credentials.json"
 
             IMAGE="${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
 
