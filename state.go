@@ -56,4 +56,3 @@ func (s *StateStore) Reset(userID int64) {
 	defer s.mu.Unlock()
 	s.m[userID] = &UserState{Step: StepNone, UpdatedAt: time.Now()}
 }
-

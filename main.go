@@ -13,16 +13,18 @@ import (
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 	"github.com/joho/godotenv"
-
+  "github.com/go-telegram/ui/datepicker"
 	"google.golang.org/api/option"
 )
 
 const (
-	skipCmd = "/skip"
+	skipCmd     = "/skip"
 	cancelCmd   = "/cancel"
 	startCmd    = "/start"
 	addCmd      = "/add"
 )
+
+var dp *datepicker.DatePicker
 
 func main() {
 	_ = godotenv.Load()
@@ -46,7 +48,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	store := NewStateStore()
+	store := NewStateStore()	
 
 	b, err := tgbot.New(token, tgbot.WithDefaultHandler(func(ctx context.Context, b *tgbot.Bot, update *models.Update) {
 		log.Printf("UPDATE: %+v\n", update)
@@ -60,6 +62,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	initUI(b)
 	log.Println("Bot started")
 	b.Start(ctx)
 }
@@ -85,8 +88,6 @@ func handleMessage(
 
 	text := strings.TrimSpace(msg.Text)
 
-	
-
 	if text == startCmd {
 		greeting := fmt.Sprintf(
 			"Привет\\!\n\n"+
@@ -110,7 +111,10 @@ func handleMessage(
 		st := store.Get(userID)
 		st.Step = StepDate
 		st.UpdatedAt = time.Now()
-		sendText(ctx, b, msg.Chat.ID, "Записываю ✍️\n\nВведи *Дату* в формате DD\\.MM\\.YYYY \\(например 09\\.01\\.2026\\):\n\n❌ /cancel — отмена", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		sendText(ctx, b, msg.Chat.ID,
+		 "Записываю ✍️\n\nВыбери *дату* на календаре:\n\n❌ /cancel — отмена",
+     dp.Keyboard(time.Now()),
+    )
 		return
 	}
 
@@ -132,13 +136,17 @@ func handleMessage(
 
 	switch st.Step {
 	case StepDate:
-		if err := validateDateDDMMYYYY(text); err != nil {
-			sendText(ctx, b, msg.Chat.ID, "😵‍💫 Дата должна быть в формате DD\\.MM\\.YYYY и не пустая\\. Пример: 09\\.01\\.2026", nil)
-			return
-		}
-		st.Date = text
-		st.Step = StepSpender
-		sendText(ctx, b, msg.Chat.ID, "Выбери *На кого потратили*:", replyKeyboardFromList(cats.Spenders))
+    if err := validateDateDDMMYYYY(text); err == nil {
+			st.Date = text
+      st.Step = StepSpender
+      sendText(ctx, b, msg.Chat.ID, "Выбери *На кого потратили*:", replyKeyboardFromList(cats.Spenders))
+      return
+    }
+
+    sendText(ctx, b, msg.Chat.ID,
+        "😵‍💫 Выбери *дату* на календаре (или введи DD.MM.YYYY):",
+        dp.Keyboard(time.Now()),
+    )
 		return
 
 	case StepSpender:
@@ -299,3 +307,11 @@ func isAllowed(allowed map[int64]struct{}, userID int64) bool {
 	return ok
 }
 
+func initUI(b *tgbot.Bot) {
+    dp = datepicker.New(
+        b,
+        onDatePicked,
+        datepicker.WithPrefix("date"),
+				datepicker.Language("ru"),
+    )
+}

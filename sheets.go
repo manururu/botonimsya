@@ -57,17 +57,17 @@ func (c *SheetsClient) GetCategories(ctx context.Context) (Categories, error) {
 
 	var out Categories
 	for _, vr := range resp.ValueRanges {
-    r := strings.ReplaceAll(vr.Range, "'", "")
+		r := strings.ReplaceAll(vr.Range, "'", "")
 
-    switch {
-    case strings.HasPrefix(r, "Категории!A"):
-        out.Cats = normalizeColumn(vr.Values)
-    case strings.HasPrefix(r, "Категории!B"):
-        out.Spenders = normalizeColumn(vr.Values)
-    case strings.HasPrefix(r, "Категории!D"):
-        out.Cards = normalizeColumn(vr.Values)
-    }
-  }
+		switch {
+		case strings.HasPrefix(r, "Категории!A"):
+			out.Cats = normalizeColumn(vr.Values)
+		case strings.HasPrefix(r, "Категории!B"):
+			out.Spenders = normalizeColumn(vr.Values)
+		case strings.HasPrefix(r, "Категории!D"):
+			out.Cards = normalizeColumn(vr.Values)
+		}
+	}
 
 	c.cacheMu.Lock()
 	c.cache = out
@@ -118,4 +118,3 @@ func (c *SheetsClient) AppendExpenseRow(ctx context.Context, date, spender, cate
 
 	return err
 }
-
