@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/go-telegram/bot v1.17.0
+	github.com/go-telegram/ui v0.5.1
 	github.com/joho/godotenv v1.5.1
 	google.golang.org/api v0.197.0
 )
