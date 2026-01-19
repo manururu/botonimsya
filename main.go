@@ -12,16 +12,16 @@ import (
 
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+	"github.com/go-telegram/ui/datepicker"
 	"github.com/joho/godotenv"
-  "github.com/go-telegram/ui/datepicker"
 	"google.golang.org/api/option"
 )
 
 const (
-	skipCmd     = "/skip"
-	cancelCmd   = "/cancel"
-	startCmd    = "/start"
-	addCmd      = "/add"
+	skipCmd   = "/skip"
+	cancelCmd = "/cancel"
+	startCmd  = "/start"
+	addCmd    = "/add"
 )
 
 var dp *datepicker.DatePicker
@@ -36,7 +36,7 @@ func main() {
 	allowedIDs := parseAllowedUserIDs(mustEnv("ALLOWED_USER_IDS"))
 
 	ctx := context.Background()
-  
+
 	sheetsClient, err := NewSheetsClient(
 		ctx,
 		sheetID,
@@ -48,21 +48,21 @@ func main() {
 		log.Fatal(err)
 	}
 
-	store := NewStateStore()	
+	store := NewStateStore()
 
 	b, err := tgbot.New(token, tgbot.WithDefaultHandler(func(ctx context.Context, b *tgbot.Bot, update *models.Update) {
 		log.Printf("UPDATE: %+v\n", update)
 		if update.Message == nil {
 			return
 		}
-	  log.Printf("MESSAGE: chat=%d text=%q\n", update.Message.Chat.ID, update.Message.Text)
+		log.Printf("MESSAGE: chat=%d text=%q\n", update.Message.Chat.ID, update.Message.Text)
 		handleMessage(ctx, b, update.Message, store, sheetsClient, allowedIDs, sheetURL)
 	}))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	initUI(b)
+	dp = initUI(b, store, sheetsClient)
 	log.Println("Bot started")
 	b.Start(ctx)
 }
@@ -76,13 +76,9 @@ func handleMessage(
 	allowedIDs map[int64]struct{},
 	sheetURL string,
 ) {
-	userID := msg.From.ID
+	userID := msg.Chat.ID
 
-	if !isAllowed(allowedIDs, userID) {
-		sendText(ctx, b, msg.Chat.ID,
-			"⛔ Это семейный бот для учёта расходов\\. У вас нет прав пользоваться им\\.",
-			nil,
-		)
+	if _, ok := allowedIDs[userID]; !ok {
 		return
 	}
 
@@ -91,9 +87,9 @@ func handleMessage(
 	if text == startCmd {
 		greeting := fmt.Sprintf(
 			"Привет\\!\n\n"+
-			"Я записываю семейные расходы в [таблицу](%s)\\.\n\n"+
-			"➕ Добавить расход — /add\n"+
-			"❌ Отменить ввод — /cancel\n",
+				"Я записываю семейные расходы в [таблицу](%s)\\.\n\n"+
+				"➕ Добавить расход — /add\n"+
+				"❌ Отменить ввод — /cancel\n",
 			sheetURL,
 		)
 		sendText(ctx, b, msg.Chat.ID, greeting, nil)
@@ -112,9 +108,9 @@ func handleMessage(
 		st.Step = StepDate
 		st.UpdatedAt = time.Now()
 		sendText(ctx, b, msg.Chat.ID,
-		 "Записываю ✍️\n\nВыбери *дату* на календаре:\n\n❌ /cancel — отмена",
-     dp.Keyboard(time.Now()),
-    )
+			"Записываю ✍️\n\nВыбери *дату* на календаре:\n\n❌ /cancel — отмена",
+			dp,
+		)
 		return
 	}
 
@@ -136,17 +132,17 @@ func handleMessage(
 
 	switch st.Step {
 	case StepDate:
-    if err := validateDateDDMMYYYY(text); err == nil {
+		if err := validateDateDDMMYYYY(text); err == nil {
 			st.Date = text
-      st.Step = StepSpender
-      sendText(ctx, b, msg.Chat.ID, "Выбери *На кого потратили*:", replyKeyboardFromList(cats.Spenders))
-      return
-    }
+			st.Step = StepSpender
+			sendText(ctx, b, msg.Chat.ID, "Выбери *На кого потратили*:", replyKeyboardFromList(cats.Spenders))
+			return
+		}
 
-    sendText(ctx, b, msg.Chat.ID,
-        "😵‍💫 Выбери *дату* на календаре (или введи DD.MM.YYYY):",
-        dp.Keyboard(time.Now()),
-    )
+		sendText(ctx, b, msg.Chat.ID,
+			"😵‍💫 Выбери *дату* на календаре (или введи DD.MM.YYYY):",
+			dp,
+		)
 		return
 
 	case StepSpender:
@@ -302,16 +298,50 @@ func parseAllowedUserIDs(env string) map[int64]struct{} {
 	return out
 }
 
-func isAllowed(allowed map[int64]struct{}, userID int64) bool {
-	_, ok := allowed[userID]
-	return ok
-}
+func initUI(
+	b *tgbot.Bot,
+	store *StateStore,
+	sheets *SheetsClient,
+) *datepicker.DatePicker {
 
-func initUI(b *tgbot.Bot) {
-    dp = datepicker.New(
-        b,
-        onDatePicked,
-        datepicker.WithPrefix("date"),
-				datepicker.Language("ru"),
-    )
+	handler := func(
+		ctx context.Context,
+		b *tgbot.Bot,
+		mes models.MaybeInaccessibleMessage,
+		date time.Time,
+	) {
+		if mes.Message == nil {
+			return
+		}
+
+		msg := mes.Message
+		userID := msg.Chat.ID
+
+		st := store.Get(userID)
+		if st.Step != StepDate {
+			return
+		}
+
+		st.Date = date.Format("02.01.2006")
+		st.Step = StepSpender
+		st.UpdatedAt = time.Now()
+
+		cats, err := sheets.GetCategories(ctx)
+		if err != nil {
+			sendText(ctx, b, msg.Chat.ID, "💀 Ошибка чтения категорий", nil)
+			return
+		}
+
+		sendText(ctx, b, msg.Chat.ID,
+			"Выбери *На кого потратили*:",
+			replyKeyboardFromList(cats.Spenders),
+		)
+	}
+
+	return datepicker.New(
+		b,
+		handler,
+		datepicker.WithPrefix("date"),
+		datepicker.Language("ru"),
+	)
 }
