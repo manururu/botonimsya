@@ -50,14 +50,24 @@ func main() {
 
 	store := NewStateStore()
 
-	b, err := tgbot.New(token, tgbot.WithDefaultHandler(func(ctx context.Context, b *tgbot.Bot, update *models.Update) {
-		log.Printf("UPDATE: %+v\n", update)
-		if update.Message == nil {
-			return
-		}
-		log.Printf("MESSAGE: chat=%d text=%q\n", update.Message.Chat.ID, update.Message.Text)
-		handleMessage(ctx, b, update.Message, store, sheetsClient, allowedIDs, sheetURL)
-	}))
+	b, err := tgbot.New(
+		token,
+		tgbot.WithMessageTextHandler("", tgbot.MatchTypePrefix, func(ctx context.Context, b *tgbot.Bot, update *models.Update) {
+			log.Printf("UPDATE: %+v\n", update)
+			if update.Message == nil {
+				return
+			}
+			log.Printf("MESSAGE: chat=%d text=%q\n", update.Message.Chat.ID, update.Message.Text)
+
+			handleMessage(ctx, b, update.Message, store, sheetsClient, allowedIDs, sheetURL)
+		}),
+
+		tgbot.WithDefaultHandler(func(ctx context.Context, b *tgbot.Bot, update *models.Update) {
+			if update.CallbackQuery != nil {
+				log.Printf("CALLBACK: from=%d data=%q", update.CallbackQuery.From.ID, update.CallbackQuery.Data)
+			}
+		}),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -325,6 +335,8 @@ func initUI(
 		st.Date = date.Format("02.01.2006")
 		st.Step = StepSpender
 		st.UpdatedAt = time.Now()
+
+		log.Printf("DATEPICKER select: chat=%d date=%s", userID, st.Date)
 
 		cats, err := sheets.GetCategories(ctx)
 		if err != nil {
