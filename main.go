@@ -313,6 +313,17 @@ func initUI(
 	store *StateStore,
 	sheets *SheetsClient,
 ) *datepicker.DatePicker {
+	deletePickerMessage := func(ctx context.Context, b *tgbot.Bot, mes models.MaybeInaccessibleMessage) {
+		if mes.Message == nil {
+			return
+		}
+		if _, err := b.DeleteMessage(ctx, &tgbot.DeleteMessageParams{
+			ChatID:    mes.Message.Chat.ID,
+			MessageID: mes.Message.ID,
+		}); err != nil {
+			log.Printf("DATEPICKER delete message error: %v", err)
+		}
+	}
 
 	handler := func(
 		ctx context.Context,
@@ -320,6 +331,8 @@ func initUI(
 		mes models.MaybeInaccessibleMessage,
 		date time.Time,
 	) {
+		deletePickerMessage(ctx, b, mes)
+
 		if mes.Message == nil {
 			return
 		}
@@ -348,6 +361,11 @@ func initUI(
 			"Выбери *На кого потратили*:",
 			replyKeyboardFromList(cats.Spenders),
 		)
+
+		cancelHandler := func(ctx context.Context, b *tgbot.Bot, mes models.MaybeInaccessibleMessage) {
+			deletePickerMessage(ctx, b, mes)
+		}
+
 	}
 
 	return datepicker.New(
@@ -355,5 +373,8 @@ func initUI(
 		handler,
 		datepicker.WithPrefix("date"),
 		datepicker.Language("ru"),
+		datepicker.NoDeleteAfterSelect(),
+		datepicker.NoDeleteAfterCancel(),
+		datepicker.OnCancel(cancelHandler),
 	)
 }
