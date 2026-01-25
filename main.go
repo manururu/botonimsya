@@ -345,6 +345,8 @@ func initUI(
 			return
 		}
 
+		deletePickerMessage(ctx, b, mes)
+
 		st.Date = date.Format("02.01.2006")
 		st.Step = StepSpender
 		st.UpdatedAt = time.Now()
@@ -362,10 +364,22 @@ func initUI(
 			replyKeyboardFromList(cats.Spenders),
 		)
 
-		cancelHandler := func(ctx context.Context, b *tgbot.Bot, mes models.MaybeInaccessibleMessage) {
-			deletePickerMessage(ctx, b, mes)
+	}
+
+	cancelHandler := func(ctx context.Context, b *tgbot.Bot, mes models.MaybeInaccessibleMessage) {
+		if mes.Message == nil {
+			return
 		}
 
+		userID := mes.Message.Chat.ID
+		st := store.Get(userID)
+		if st.Step != StepDate {
+			return
+		}
+
+		deletePickerMessage(ctx, b, mes)
+		store.Reset(userID)
+		sendText(ctx, b, userID, "😕 Галя, у нас отмена\\. Чтобы начать заново — /add", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
 	}
 
 	return datepicker.New(
