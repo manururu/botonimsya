@@ -108,7 +108,7 @@ func handleMessage(
 
 	if text == cancelCmd {
 		store.Reset(userID)
-		sendText(ctx, b, msg.Chat.ID, "😕 Галя, у нас отмена\\. Чтобы начать заново — /add", nil)
+		sendText(ctx, b, msg.Chat.ID, "😕 Галя, у нас отмена\\. Чтобы начать заново — /add", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
 		return
 	}
 
