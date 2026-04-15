@@ -14,7 +14,6 @@ import (
 type Categories struct {
 	Spenders []string
 	Cats     []string
-	Cards    []string
 }
 
 type SheetsClient struct {
@@ -40,14 +39,14 @@ func NewSheetsClient(ctx context.Context, spreadsheetID string, opts ...option.C
 
 func (c *SheetsClient) GetCategories(ctx context.Context) (Categories, error) {
 	c.cacheMu.Lock()
-	if time.Now().Before(c.cacheExpires) && (len(c.cache.Cats)+len(c.cache.Spenders)+len(c.cache.Cards) > 0) {
+	if time.Now().Before(c.cacheExpires) && (len(c.cache.Cats)+len(c.cache.Spenders) > 0) {
 		defer c.cacheMu.Unlock()
 		return c.cache, nil
 	}
 	c.cacheMu.Unlock()
 
 	resp, err := c.srv.Spreadsheets.Values.BatchGet(c.spreadsheet).
-		Ranges("Категории!A:A", "Категории!B:B", "Категории!D:D").
+		Ranges("Категории!A:A", "Категории!B:B").
 		MajorDimension("COLUMNS").
 		Context(ctx).
 		Do()
@@ -64,8 +63,6 @@ func (c *SheetsClient) GetCategories(ctx context.Context) (Categories, error) {
 			out.Cats = normalizeColumn(vr.Values)
 		case strings.HasPrefix(r, "Категории!B"):
 			out.Spenders = normalizeColumn(vr.Values)
-		case strings.HasPrefix(r, "Категории!D"):
-			out.Cards = normalizeColumn(vr.Values)
 		}
 	}
 
@@ -93,14 +90,14 @@ func normalizeColumn(values [][]interface{}) []string {
 	return res
 }
 
-func (c *SheetsClient) AppendExpenseRow(ctx context.Context, date, spender, category string, amount int, card, comment string) error {
+func (c *SheetsClient) AppendExpenseRow(ctx context.Context, date, spender, category string, amount int, submitter, comment string) error {
 	t, err := time.Parse("02.01.2006", date)
 	if err != nil {
 		return err
 	}
 	month := int(t.Month())
 
-	row := []interface{}{date, spender, category, amount, comment, card, month}
+	row := []interface{}{date, spender, category, amount, comment, submitter, month}
 
 	vr := &sheets.ValueRange{
 		Values: [][]interface{}{row},

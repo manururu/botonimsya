@@ -14,18 +14,18 @@ const (
 	StepCategory
 	StepAmount
 	StepComment
-	StepCard
+	StepSubmitter
 )
 
 type UserState struct {
 	Step Step
 
-	Date     string
-	Spender  string
-	Category string
-	Amount   int
-	Comment  string
-	Card     string
+	Date      string
+	Spender   string
+	Category  string
+	Amount    int
+	Comment   string
+	Submitter string
 
 	UpdatedAt time.Time
 }

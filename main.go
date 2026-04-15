@@ -192,18 +192,20 @@ func handleMessage(
 		} else {
 			st.Comment = text
 		}
-		st.Step = StepCard
-		sendText(ctx, b, msg.Chat.ID, "Выбери *С чьей карты потратили*:", replyKeyboardFromList(cats.Cards))
+		st.Step = StepSubmitter
 		return
 
-	case StepCard:
-		if !contains(cats.Cards, text) {
-			sendText(ctx, b, msg.Chat.ID, "Пожалуйста, выбери значение кнопкой ниже, это проще, чем нажимать кнопки на клаве 🫠", replyKeyboardFromList(cats.Cards))
-			return
-		}
-		st.Card = text
+	case StepSubmitter:
+		sendText(ctx, b, msg.Chat.ID, "Смотрю, *кто внёс данную запись о расходах*...", nil)
 
-		err := sheetsClient.AppendExpenseRow(ctx, st.Date, st.Spender, st.Category, st.Amount, st.Card, st.Comment)
+		userName := msg.From.FirstName
+		firstLetter := string([]rune(userName)[0])
+
+		st.Submitter = firstLetter
+
+		sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Ага! Наконец-то это *%s*!", userName), nil)
+
+		err := sheetsClient.AppendExpenseRow(ctx, st.Date, st.Spender, st.Category, st.Amount, st.Submitter, st.Comment)
 		if err != nil {
 			sendText(ctx, b, msg.Chat.ID, "💀 Что-то сломалось: не смог записать в «Расходы»\\. Попробуй ещё раз\\.", nil)
 			return
