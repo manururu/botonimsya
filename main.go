@@ -193,26 +193,7 @@ func handleMessage(
 			st.Comment = text
 		}
 		st.Step = StepSubmitter
-		return
-
-	case StepSubmitter:
-		sendText(ctx, b, msg.Chat.ID, "Смотрю, *кто внёс данную запись о расходах*...", nil)
-
-		userName := msg.From.FirstName
-		firstLetter := string([]rune(userName)[0])
-
-		st.Submitter = firstLetter
-
-		sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Ага! Наконец-то это *%s*!", userName), nil)
-
-		err := sheetsClient.AppendExpenseRow(ctx, st.Date, st.Spender, st.Category, st.Amount, st.Submitter, st.Comment)
-		if err != nil {
-			sendText(ctx, b, msg.Chat.ID, "💀 Что-то сломалось: не смог записать в «Расходы»\\. Попробуй ещё раз\\.", nil)
-			return
-		}
-
-		store.Reset(userID)
-		sendText(ctx, b, msg.Chat.ID, "✅ Записал в «Расходы»\\.\n\nЧтобы добавить ещё — /add", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		submitExpense(ctx, b, msg, st, sheetsClient, store)
 		return
 
 	default:
@@ -308,6 +289,32 @@ func parseAllowedUserIDs(env string) map[int64]struct{} {
 		out[v] = struct{}{}
 	}
 	return out
+}
+
+func submitExpense(
+	ctx context.Context,
+	b *tgbot.Bot,
+	msg *models.Message,
+	st *UserState,
+	sheetsClient *SheetsClient,
+	store *StateStore,
+) {
+	sendText(ctx, b, msg.Chat.ID, "Смотрю, *кто внёс данную запись о расходах*...", nil)
+
+	userName := msg.From.FirstName
+	firstLetter := string([]rune(userName)[0])
+	st.Submitter = firstLetter
+
+	sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Ага! Наконец-то это *%s*!", userName), nil)
+
+	err := sheetsClient.AppendExpenseRow(ctx, st.Date, st.Spender, st.Category, st.Amount, st.Submitter, st.Comment)
+	if err != nil {
+		sendText(ctx, b, msg.Chat.ID, "💀 Что-то сломалось: не смог записать в «Расходы»\\. Попробуй ещё раз\\.", nil)
+		return
+	}
+
+	store.Reset(msg.Chat.ID)
+	sendText(ctx, b, msg.Chat.ID, "✅ Записал в «Расходы»\\.\n\nЧтобы добавить ещё — /add", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
 }
 
 func initUI(
