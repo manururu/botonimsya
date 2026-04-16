@@ -299,13 +299,13 @@ func submitExpense(
 	sheetsClient *SheetsClient,
 	store *StateStore,
 ) {
-	sendText(ctx, b, msg.Chat.ID, "Смотрю, *кто внёс данную запись о расходах*...", nil)
+	sendText(ctx, b, msg.Chat.ID, "Смотрю, *кто внёс данную запись о расходах*\\.\\.\\.", nil)
 
 	userName := msg.From.FirstName
 	firstLetter := string([]rune(userName)[0])
 	st.Submitter = firstLetter
 
-	sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Ага! Наконец-то это *%s*!", userName), nil)
+	sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Ага\\! Наконец-то это *%s*\\!", userName), nil)
 
 	err := sheetsClient.AppendExpenseRow(ctx, st.Date, st.Spender, st.Category, st.Amount, st.Submitter, st.Comment)
 	if err != nil {
