@@ -305,7 +305,7 @@ func submitExpense(
 	firstLetter := string([]rune(userName)[0])
 	st.Submitter = firstLetter
 
-	sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Ага\\! Наконец-то это *%s*\\!", userName), nil)
+	sendText(ctx, b, msg.Chat.ID, fmt.Sprintf("Ага\\! Наконец\\-то это *%s*\\!", userName), nil)
 
 	err := sheetsClient.AppendExpenseRow(ctx, st.Date, st.Spender, st.Category, st.Amount, st.Submitter, st.Comment)
 	if err != nil {
