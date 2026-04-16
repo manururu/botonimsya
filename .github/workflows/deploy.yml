@@ -11,7 +11,7 @@ permissions:
   packages: write
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
@@ -41,6 +41,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository }}
+      IMAGE_TAG: ${{ github.ref_name }}
+    steps:
       - name: Deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
