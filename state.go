@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// Step - текущий шаг формы ввода расхода.
 type Step int
 
 const (
@@ -17,6 +18,7 @@ const (
 	StepSubmitter
 )
 
+// UserState хранит данные незавершенной формы для одного пользователя.
 type UserState struct {
 	Step Step
 
@@ -30,11 +32,13 @@ type UserState struct {
 	UpdatedAt time.Time
 }
 
+// StateStore - хранилище состояний формы по пользователям.
 type StateStore struct {
 	mu sync.Mutex
 	m  map[int64]*UserState
 }
 
+// NewStateStore возвращает пустое хранилище состояний.
 func NewStateStore() *StateStore {
 	return &StateStore{m: make(map[int64]*UserState)}
 }

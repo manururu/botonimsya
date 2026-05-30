@@ -22,6 +22,8 @@ const (
 	cancelCmd = "/cancel"
 	startCmd  = "/start"
 	addCmd    = "/add"
+
+	dateFmt = "02.01.2006"
 )
 
 var dp *datepicker.DatePicker
@@ -43,7 +45,6 @@ func main() {
 		option.WithCredentialsFile(credsPath),
 		option.WithScopes("https://www.googleapis.com/auth/spreadsheets"),
 	)
-
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -162,12 +163,12 @@ func handleMessage(
 		}
 		st.Spender = text
 		st.Step = StepCategory
-		sendText(ctx, b, msg.Chat.ID, "Выбери *Категория трат*:", replyKeyboardFromList(cats.Cats))
+		sendText(ctx, b, msg.Chat.ID, "Выбери *Категория трат*:", replyKeyboardFromList(cats.Names))
 		return
 
 	case StepCategory:
-		if !contains(cats.Cats, text) {
-			sendText(ctx, b, msg.Chat.ID, "Пожалуйста, выбери значение кнопкой ниже, зачем этот геморрой? 😹", replyKeyboardFromList(cats.Cats))
+		if !contains(cats.Names, text) {
+			sendText(ctx, b, msg.Chat.ID, "Пожалуйста, выбери значение кнопкой ниже, зачем этот геморрой? 😹", replyKeyboardFromList(cats.Names))
 			return
 		}
 		st.Category = text
@@ -246,13 +247,13 @@ func validateDateDDMMYYYY(s string) error {
 	if strings.TrimSpace(s) == "" {
 		return errors.New("empty")
 	}
-	_, err := time.Parse("02.01.2006", s)
+	_, err := time.Parse(dateFmt, s)
 	return err
 }
 
 func parseAmountExpr(s string) (int, error) {
 	s = strings.TrimSpace(s)
-	// Приводим к виду, где каждый член предваряется + или -, затем разбиваем по +
+	// нормализуем знаки: каждое число будет предварено + или -, затем разбиваем по +
 	s = strings.ReplaceAll(s, "-", "+-")
 	parts := strings.Split(s, "+")
 	total := 0
@@ -369,9 +370,7 @@ func initUI(
 			return
 		}
 
-		deletePickerMessage(ctx, b, mes)
-
-		st.Date = date.Format("02.01.2006")
+		st.Date = date.Format(dateFmt)
 		st.Step = StepSpender
 		st.UpdatedAt = time.Now()
 
@@ -387,7 +386,6 @@ func initUI(
 			"Выбери *На кого потратили*:",
 			replyKeyboardFromList(cats.Spenders),
 		)
-
 	}
 
 	cancelHandler := func(ctx context.Context, b *tgbot.Bot, mes models.MaybeInaccessibleMessage) {

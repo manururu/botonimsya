@@ -11,11 +11,24 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
+const (
+	sheetCategories = "Категории"
+	sheetExpenses   = "Расходы"
+
+	rangeCatNames       = sheetCategories + "!A:A"
+	rangeSpenders       = sheetCategories + "!B:B"
+	rangePrefixCatNames = sheetCategories + "!A"
+	rangePrefixSpenders = sheetCategories + "!B"
+	rangeExpensesAppend = sheetExpenses + "!A:F"
+)
+
+// Categories содержит имена пользаков и названия категорий расходов из таблицы.
 type Categories struct {
 	Spenders []string
-	Cats     []string
+	Names    []string
 }
 
+// SheetsClient оборачивает Google Sheets API и кеширует данные категорий.
 type SheetsClient struct {
 	srv          *sheets.Service
 	spreadsheet  string
@@ -25,10 +38,11 @@ type SheetsClient struct {
 	cacheTTL     time.Duration
 }
 
+// NewSheetsClient создает SheetsClient для работы с указанной таблицей.
 func NewSheetsClient(ctx context.Context, spreadsheetID string, opts ...option.ClientOption) (*SheetsClient, error) {
 	srv, err := sheets.NewService(ctx, opts...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating sheets service: %w", err)
 	}
 	return &SheetsClient{
 		srv:         srv,
@@ -37,21 +51,23 @@ func NewSheetsClient(ctx context.Context, spreadsheetID string, opts ...option.C
 	}, nil
 }
 
+// GetCategories возвращает плательщиков и категории с кешированием на 5 минут.
 func (c *SheetsClient) GetCategories(ctx context.Context) (Categories, error) {
 	c.cacheMu.Lock()
-	if time.Now().Before(c.cacheExpires) && (len(c.cache.Cats)+len(c.cache.Spenders) > 0) {
-		defer c.cacheMu.Unlock()
-		return c.cache, nil
+	if time.Now().Before(c.cacheExpires) && len(c.cache.Names)+len(c.cache.Spenders) > 0 {
+		cached := c.cache
+		c.cacheMu.Unlock()
+		return cached, nil
 	}
 	c.cacheMu.Unlock()
 
 	resp, err := c.srv.Spreadsheets.Values.BatchGet(c.spreadsheet).
-		Ranges("Категории!A:A", "Категории!B:B").
+		Ranges(rangeSpenders, rangeCatNames).
 		MajorDimension("COLUMNS").
 		Context(ctx).
 		Do()
 	if err != nil {
-		return Categories{}, err
+		return Categories{}, fmt.Errorf("fetching categories: %w", err)
 	}
 
 	var out Categories
@@ -59,9 +75,9 @@ func (c *SheetsClient) GetCategories(ctx context.Context) (Categories, error) {
 		r := strings.ReplaceAll(vr.Range, "'", "")
 
 		switch {
-		case strings.HasPrefix(r, "Категории!A"):
-			out.Cats = normalizeColumn(vr.Values)
-		case strings.HasPrefix(r, "Категории!B"):
+		case strings.HasPrefix(r, rangePrefixCatNames):
+			out.Names = normalizeColumn(vr.Values)
+		case strings.HasPrefix(r, rangePrefixSpenders):
 			out.Spenders = normalizeColumn(vr.Values)
 		}
 	}
@@ -90,10 +106,11 @@ func normalizeColumn(values [][]interface{}) []string {
 	return res
 }
 
+// AppendExpenseRow добавляет одну запись расхода в лист «Расходы».
 func (c *SheetsClient) AppendExpenseRow(ctx context.Context, date, spender, category string, amount int, submitter, comment string) error {
-	t, err := time.Parse("02.01.2006", date)
+	t, err := time.Parse(dateFmt, date)
 	if err != nil {
-		return err
+		return fmt.Errorf("parsing expense date %q: %w", date, err)
 	}
 	month := int(t.Month())
 
@@ -105,13 +122,16 @@ func (c *SheetsClient) AppendExpenseRow(ctx context.Context, date, spender, cate
 
 	_, err = c.srv.Spreadsheets.Values.Append(
 		c.spreadsheet,
-		"Расходы!A:F",
+		rangeExpensesAppend,
 		vr,
 	).
 		ValueInputOption("USER_ENTERED").
 		InsertDataOption("INSERT_ROWS").
 		Context(ctx).
 		Do()
+	if err != nil {
+		return fmt.Errorf("appending expense row: %w", err)
+	}
 
-	return err
+	return nil
 }
