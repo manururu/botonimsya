@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -104,6 +105,59 @@ func normalizeColumn(values [][]interface{}) []string {
 		res = append(res, s)
 	}
 	return res
+}
+
+// ExpenseRow представляет одну запись из листа «Расходы».
+type ExpenseRow struct {
+	Date     string
+	Category string
+	Amount   string
+	Comment  string
+}
+
+// GetLastExpenses возвращает последние n записей расходов, внесённых данным submitter.
+func (c *SheetsClient) GetLastExpenses(ctx context.Context, submitter string, n int) ([]ExpenseRow, error) {
+	resp, err := c.srv.Spreadsheets.Values.Get(c.spreadsheet, sheetExpenses+"!A:F").
+		Context(ctx).
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("fetching expenses: %w", err)
+	}
+
+	var matches []ExpenseRow
+	for _, row := range resp.Values {
+		if len(row) < 6 {
+			continue
+		}
+		sub := strings.TrimSpace(fmt.Sprint(row[5]))
+		if sub != submitter {
+			continue
+		}
+		comment := ""
+		if len(row) > 4 {
+			comment = strings.TrimSpace(fmt.Sprint(row[4]))
+		}
+		matches = append(matches, ExpenseRow{
+			Date:     strings.TrimSpace(fmt.Sprint(row[0])),
+			Category: strings.TrimSpace(fmt.Sprint(row[2])),
+			Amount:   strings.TrimSpace(fmt.Sprint(row[3])),
+			Comment:  comment,
+		})
+	}
+
+	sort.Slice(matches, func(i, j int) bool {
+		ti, ei := time.Parse(dateFmt, matches[i].Date)
+		tj, ej := time.Parse(dateFmt, matches[j].Date)
+		if ei != nil || ej != nil {
+			return false
+		}
+		return ti.Before(tj)
+	})
+
+	if len(matches) <= n {
+		return matches, nil
+	}
+	return matches[len(matches)-n:], nil
 }
 
 // AppendExpenseRow добавляет одну запись расхода в лист «Расходы».

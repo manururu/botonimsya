@@ -22,6 +22,7 @@ const (
 	cancelCmd = "/cancel"
 	startCmd  = "/start"
 	addCmd    = "/add"
+	lastCmd   = "/last"
 
 	dateFmt = "02.01.2006"
 )
@@ -100,6 +101,7 @@ func handleMessage(
 			"Привет\\!\n\n"+
 				"Я записываю семейные расходы в [таблицу](%s)\\.\n\n"+
 				"➕ Добавить расход — /add\n"+
+				"📋 Последние записи — /last\n"+
 				"❌ Отменить ввод — /cancel\n",
 			sheetURL,
 		)
@@ -110,6 +112,21 @@ func handleMessage(
 	if text == cancelCmd {
 		store.Reset(userID)
 		sendText(ctx, b, msg.Chat.ID, "😕 Галя, у нас отмена\\. Чтобы начать заново — /add", nil)
+		return
+	}
+
+	if text == lastCmd {
+		submitter := string([]rune(msg.From.FirstName)[0])
+		rows, err := sheetsClient.GetLastExpenses(ctx, submitter, 3)
+		if err != nil {
+			sendText(ctx, b, msg.Chat.ID, "💀 Не смог прочитать «Расходы»\\. Попробуй ещё раз\\.", nil)
+			return
+		}
+		if len(rows) == 0 {
+			sendText(ctx, b, msg.Chat.ID, "Записей пока нет\\.", nil)
+			return
+		}
+		sendText(ctx, b, msg.Chat.ID, formatLastExpenses(rows), nil)
 		return
 	}
 
@@ -281,6 +298,84 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+func padRight(s string, width int) string {
+	r := []rune(s)
+	if len(r) >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-len(r))
+}
+
+func padLeft(s string, width int) string {
+	r := []rune(s)
+	if len(r) >= width {
+		return s
+	}
+	return strings.Repeat(" ", width-len(r)) + s
+}
+
+func runeLen(s string) int {
+	return len([]rune(s))
+}
+
+func formatLastExpenses(rows []ExpenseRow) string {
+	const hDate, hCat, hAmt, hComment = "Дата", "Категория", "Сумма", "Комментарий"
+
+	wDate := runeLen(hDate)
+	wCat := runeLen(hCat)
+	wAmt := runeLen(hAmt)
+	wComment := runeLen(hComment)
+
+	for _, r := range rows {
+		if w := runeLen(r.Date); w > wDate {
+			wDate = w
+		}
+		if w := runeLen(r.Category); w > wCat {
+			wCat = w
+		}
+		if w := runeLen(r.Amount); w > wAmt {
+			wAmt = w
+		}
+		comment := r.Comment
+		if comment == "" {
+			comment = "—"
+		}
+		if w := runeLen(comment); w > wComment {
+			wComment = w
+		}
+	}
+
+	sepDate := strings.Repeat("-", wDate)
+	sepCat := strings.Repeat("-", wCat)
+	sepAmt := strings.Repeat("-", wAmt)
+	sepComment := strings.Repeat("-", wComment)
+
+	row := func(date, cat, amt, comment string) string {
+		return padRight(date, wDate) + " | " +
+			padRight(cat, wCat) + " | " +
+			padLeft(amt, wAmt) + " | " +
+			padRight(comment, wComment)
+	}
+
+	var sb strings.Builder
+	sb.WriteString("```\n")
+	sb.WriteString(row(hDate, hCat, hAmt, hComment))
+	sb.WriteString("\n")
+	sb.WriteString(sepDate + "-+-" + sepCat + "-+-" + sepAmt + "-+-" + sepComment)
+	sb.WriteString("\n")
+	for _, r := range rows {
+		comment := r.Comment
+		if comment == "" {
+			comment = "—"
+		}
+		sb.WriteString(row(r.Date, r.Category, r.Amount, comment))
+		sb.WriteString("\n")
+	}
+	sb.WriteString("```")
+
+	return sb.String()
 }
 
 func mustEnv(k string) string {
