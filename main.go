@@ -172,13 +172,13 @@ func handleMessage(
 		}
 		st.Category = text
 		st.Step = StepAmount
-		sendText(ctx, b, msg.Chat.ID, "Введи *Сумму* \\(целое натуральное число\\):", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
+		sendText(ctx, b, msg.Chat.ID, "Введи *Сумму* \\(число или выражение, например 300 или 100\\+200\\-50\\):", &models.ReplyKeyboardRemove{RemoveKeyboard: true})
 		return
 
 	case StepAmount:
-		amt, err := parsePositiveInt(text)
+		amt, err := parseAmountExpr(text)
 		if err != nil {
-			sendText(ctx, b, msg.Chat.ID, "😵‍💫 Сумма должна быть целым натуральным числом \\(например 300\\)", nil)
+			sendText(ctx, b, msg.Chat.ID, "😵‍💫 Сумма должна быть числом или выражением \\(например 300 или 100\\+200\\-50\\)", nil)
 			return
 		}
 		st.Amount = amt
@@ -250,12 +250,27 @@ func validateDateDDMMYYYY(s string) error {
 	return err
 }
 
-func parsePositiveInt(s string) (int, error) {
-	n, err := strconv.Atoi(strings.TrimSpace(s))
-	if err != nil || n <= 0 {
-		return 0, errors.New("not positive int")
+func parseAmountExpr(s string) (int, error) {
+	s = strings.TrimSpace(s)
+	// Приводим к виду, где каждый член предваряется + или -, затем разбиваем по +
+	s = strings.ReplaceAll(s, "-", "+-")
+	parts := strings.Split(s, "+")
+	total := 0
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return 0, errors.New("invalid amount")
+		}
+		total += n
 	}
-	return n, nil
+	if total <= 0 {
+		return 0, errors.New("invalid amount")
+	}
+	return total, nil
 }
 
 func contains(list []string, v string) bool {
