@@ -14,6 +14,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.fingerprint.outputs.tag }}
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
       IMAGE_TAG: ${{ github.ref_name }}
@@ -31,23 +33,53 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Dockerfile copies only root-level *.go, go.mod, and go.sum.
+      - name: Calculate build fingerprint
+        id: fingerprint
+        shell: bash
+        run: |
+          HASH=$(git ls-files -z -- Dockerfile .dockerignore go.mod go.sum ':(top,glob)*.go' \
+            | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)
+          echo "tag=build-$HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Check image in GHCR
+        id: image
+        shell: bash
+        run: |
+          if docker buildx imagetools inspect "${IMAGE_NAME}:${{ steps.fingerprint.outputs.tag }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build and push
+        if: steps.image.outputs.exists == 'false'
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.fingerprint.outputs.tag }}
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
             ${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Update release tags without rebuilding
+        if: steps.image.outputs.exists == 'true'
+        shell: bash
+        run: |
+          docker buildx imagetools create \
+            -t "${IMAGE_NAME}:${IMAGE_TAG}" \
+            -t "${IMAGE_NAME}:latest" \
+            "${IMAGE_NAME}:${{ steps.fingerprint.outputs.tag }}"
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: ghcr.io/${{ github.repository }}
-      IMAGE_TAG: ${{ github.ref_name }}
+      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
     steps:
       - name: Deploy
         uses: appleboy/ssh-action@v1.0.3
