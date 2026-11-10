@@ -1,7 +1,8 @@
 name: ✨ Spreadsheet Goblin
-run-name: ${{ github.event.head_commit.message }}
+run-name: ${{ github.event.head_commit.message || format('Manual deploy ({0})', github.ref_name) }}
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
