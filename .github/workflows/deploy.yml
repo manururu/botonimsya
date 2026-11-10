@@ -92,7 +92,7 @@ jobs:
             set -euo pipefail
             
             APP_NAME=botonimsya
-            APP_DIR="/u01/$APP_NAME"
+            APP_DIR="$HOME/$APP_NAME"
             mkdir -p "$APP_DIR"
 
             cat > "$APP_DIR/.env" << 'EOF'
